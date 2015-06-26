@@ -29,11 +29,6 @@
 #include <sys/stat.h>
 #include <stdio.h>
 
-//~ #include <time.h>
-
-//~ #include <sys/time.h>
-//~ #include <sys/resource.h>
-
 #include "sg_access.h"
 #include "dplane_proxy.h"
 
@@ -41,6 +36,11 @@
 #define FIRST_VDIF_SECS_INRE(a) ((VDIFHeader *)(a->data_buf))->w1.secs_inre
 #define LAST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(&(a->data_buf[(a->n_frames-1)*(a->sgi->pkt_size)/sizeof(uint32_t)])))->w2.df_num_insec
 #define FIRST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(a->data_buf))->w2.df_num_insec
+
+enum scatgat_mode {
+	SCATGAT_MODE_READ,
+	SCATGAT_MODE_WRITE
+};
 
 typedef struct sg_part {
 	SGInfo *sgi;														// points to SGInfo for single SG file
@@ -50,6 +50,7 @@ typedef struct sg_part {
 } SGPart;
 
 typedef struct sg_plan {
+	int sgm;															// scatgat_mode: read / write
 	int n_sgprt; 														// number of SGPart elements
 	SGPart *sgprt; 														// array of SGPart elements (one per SG file)
 } SGPlan;
@@ -138,25 +139,24 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock,
 /*
  * Close scatter gather reader plan
  */
-int close_sg_read_plan(SGPlan *sgplan);
+void close_sg_read_plan(SGPlan *sgplan);
 
 /*
  * Make scatter gather write plan. 
  */
 int make_sg_write_plan(SGPlan **sgpln, const char *pattern, 
 					const char *fmtstr, int *mod_list, int n_mod, 
-					int *disk_list, int n_disk, int pkt_size);
+					int *disk_list, int n_disk);
 
 /*
  * Write VDIF buffer.
  */
-int write_next_block_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, 
-									int n_frames);
+int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames);
 
 /*
  * Close scatter gather write plan
  */
-int close_sg_write_plan(SGPlan *sgplan);
+void close_sg_write_plan(SGPlan *sgpln);
 
 /*
  * Free the resources allocated for an SGPlan structure.
