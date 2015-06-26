@@ -138,19 +138,19 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	for (imod=0; imod<n_mod; imod++)
 	{
 		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-			snprintf(_dbgmsg,0x200,"\t\tmod[%d] = %d",imod,mod_list[imod]);
+			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-				snprintf(_dbgmsg,0x200,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
-				snprintf(_dbgmsg,0x200,"\t\t\tAccessing file '%s'.",filename[ithread]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tAccessing file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
 			thread_result = pthread_create(&(sg_threads[ithread]), NULL, &sgthread_fill_read_sgi, filename[ithread]);
@@ -167,13 +167,13 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	for (imod=0; imod<n_mod; imod++)
 	{
 		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-			snprintf(_dbgmsg,0x200,"\t\tmod[%d] = %d",imod,mod_list[imod]);
+			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-				snprintf(_dbgmsg,0x200,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
@@ -357,7 +357,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 		clear_sg_part_buffer(&(sgpln->sgprt[mapping[isgprt]-1]));
 	}
 	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg,0x200,"Found %d contiguous blocks\n",n_contiguous_blocks);
+		snprintf(_dbgmsg,_DBGMSGLEN,"Found %d contiguous blocks\n",n_contiguous_blocks);
 		DEBUGMSG(_dbgmsg);
 	#endif
  /*
@@ -487,19 +487,19 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	for (imod=0; imod<n_mod; imod++)
 	{
 		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-			snprintf(_dbgmsg,0x200,"\t\tmod[%d] = %d",imod,mod_list[imod]);
+			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-				snprintf(_dbgmsg,0x200,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
-				snprintf(_dbgmsg,0x200,"\t\t\tCreating file '%s'.",filename[ithread]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tCreating file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
 			//~ thread_result = pthread_create(&(sg_threads[ithread]), NULL, &sgthread_fill_write_sgi, filename[ithread]);
@@ -516,19 +516,19 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	for (imod=0; imod<n_mod; imod++)
 	{
 		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-			snprintf(_dbgmsg,0x200,"\t\tmod[%d] = %d",imod,mod_list[imod]);
+			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-				snprintf(_dbgmsg,0x200,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
 			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
-				snprintf(_dbgmsg,0x200,"\t\t\tCreating file '%s'.",filename[ithread]);
+				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tCreating file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
 			//~ thread_result = pthread_join(&(sg_threads[ithread]), NULL);
@@ -635,7 +635,7 @@ static void * sgthread_fill_read_sgi(void *arg)
 	sgi->verbose = 0;
 	sg_open(filename,sgi);
 	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg,0x200,"\tsgi->smi.mmfd = %d",sgi->smi.mmfd);
+		snprintf(_dbgmsg,_DBGMSGLEN,"\tsgi->smi.mmfd = %d",sgi->smi.mmfd);
 		DEBUGMSG(_dbgmsg);
 		sg_report(sgi,"\tSG Report:");
 		DEBUGMSG_LEAVEFUNC;
@@ -864,7 +864,7 @@ int compare_sg_part(const void *a, const void *b)
 		#endif
 	}
 	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg,0x200,"Result = %d\n",result);
+		snprintf(_dbgmsg,_DBGMSGLEN,"Result = %d\n",result);
 		DEBUGMSG(_dbgmsg);
 		DEBUGMSG_LEAVEFUNC;
 	#endif
