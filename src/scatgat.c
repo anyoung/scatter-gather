@@ -30,7 +30,7 @@
 #define DEBUG_LEVEL_INFO 30
 #define DEBUG_LEVEL_WARNING 20
 #define DEBUG_LEVEL_ERROR 10
-#define DEBUG_LEVEL DEBUG_LEVEL_DEBUG
+//~ #define DEBUG_LEVEL DEBUG_LEVEL_DEBUG
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_INFO
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_WARNING
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_ERROR
@@ -80,7 +80,7 @@ int first_write_sgplan(SGPlan *sgpln);
 
 //////////////////////////////////////////////////////////////////////// SCATTER GATHER READING
 /*
- * Allocate memory and fill it with SGInfo instances.
+ * Create an SGPlan instance in read-mode.
  * Arguments:
  *   SGPlan **sgpln -- Address of SGPlan pointer to allocate memory.
  *   const char *pattern -- Filename pattern to search for.
@@ -96,11 +96,6 @@ int first_write_sgplan(SGPlan *sgpln);
  * Returns:
  *   int -- Number of SGInfo instances (SG files found mathcing pattern)
  * Notes:
- *   All names that match the pattern /mnt/disks/MOD/DISK/data/PATTERN
- *     where MOD and DISK are elements of mod_list and disk_list, 
- *     respectively, and PATTERN is the string in pattern, are given
- *     to sg_access. For each valid SG file found an SGInfo entry is 
- *     allocated in the buffer pointed to by *sgi.
  *   The SGInfo entries stored in sgplan are sorted in ascending order
  *     according to the timestamp on the first VDIF frame in each SG 
  *     file.
@@ -261,7 +256,8 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
  *     buffer of the associated SGPart, inside SGPlan. Upon subsequent 
  *     calls to this method no further blocks of data is read from that 
  *     particular SG file until its block can be stitched togther with 
- *     the contiguous flow.
+ *     the contiguous flow. However, data continuity is NOT checked 
+ *     between consecutive calls to this method.
  *   Block counter for each SGPart is updated if frames where read from
  *     that file.
  */
@@ -396,12 +392,10 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	return frames_read;
 }
 
-// Reading VDIF from SG files
 /*
  * Read one block's worth of VDIF frames from a group of SG files.
  * Arguments:
- *   SGInfo *sgi -- Array of valid SGInfo instances (i.e. had to have
- *     been accessed prior to calling this method).
+ *   SGPlan *sgpln -- SGPlan instance created in read-mode.
  *   int n_sgi -- Number of SGInfo elements in the array.
  *   off_t iblock -- The block index.
  *   uint32_t **vdif_buf -- Address of a pointer which can be used to
@@ -514,7 +508,23 @@ void close_sg_read_plan(SGPlan *sgpln)
 
 //////////////////////////////////////////////////////////////////////// SCATTER GATHER WRITING
 /*
- * Make scatter gather write plan. 
+ * Create a write-mode SGPlan instance.
+ * Arguments:
+ *   SGPlan **sgpln -- Address of SGPlan pointer to allocate memory.
+ *   const char *pattern -- Filename pattern to search for.
+ *   const char *fmtstr -- Format string used to compile the file full
+ *     path. It should have the form <..>%d<..>%d<..>%s where the first
+ *     %d is replaced with an element from mod_list, the second %d 
+ *     replaced with an element from disk_list, and the %s replaced with
+ *     pattern.
+ *   int *mod_list -- Array of module numbers to use.
+ *   int n_mod -- Number of modules to use.
+ *   int *disk_list -- Array of disk numbers to use.
+ *   int n_disk -- Number of disks to use.
+ * Returns:
+ *   int -- Number of SGInfo instances (SG files created)
+ * Notes:
+ *   For each SG file created an SGPart element is stored in SGPlan.
  */
 int make_sg_write_plan(SGPlan **sgpln, const char *pattern, 
 					const char *fmtstr, int *mod_list, int n_mod, 
@@ -625,7 +635,13 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 }
 
 /*
- * Write VDIF buffer.
+ * Write VDIF frames to SG files.
+ * Arguments:
+ *   SGPlan *sgpln -- Pointer to write-mode SGPlan instance.
+ *   uint32_t *vdif_buf -- Buffer that contains VDIF data to write
+ *   int n_frames -- Number of frames to write from buffer.
+ * Returns
+ *   int -- The number of frames written if all writes were successful.
  */
 int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 {
@@ -660,9 +676,8 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 		VDIFHeader *vdif_header = (VDIFHeader *)vdif_buf;
 		for (ii=0; ii<sgpln->n_sgprt; ii++)
 		{
-			sgpln->sgprt[ii].sgi->read_size = vdif_header->w3.df_len * 8;
+			sgpln->sgprt[ii].sgi->pkt_size = vdif_header->w3.df_len * 8;
 			sgpln->sgprt[ii].sgi->pkt_offset = sizeof(VDIFHeader);
-			sgpln->sgprt[ii].sgi->pkt_size = vdif_header->w3.df_len * 8 - sizeof(VDIFHeader);
 			sgpln->sgprt[ii].sgi->first_secs = vdif_header->w1.secs_inre;
 			sgpln->sgprt[ii].sgi->first_frame = vdif_header->w2.df_num_insec;
 			sgpln->sgprt[ii].sgi->ref_epoch = vdif_header->w2.ref_epoch;
@@ -672,7 +687,7 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 	{
 		// TODO: Check if incoming packets are valid?
 	}
-	frames_per_block = WBLOCK_SIZE/sgpln->sgprt[0].sgi->read_size;
+	frames_per_block = WBLOCK_SIZE/sgpln->sgprt[0].sgi->pkt_size;
 	/* Find the first SG file that is short */
 	for (ithread=1; ithread<sgpln->n_sgprt; ithread++)
 	{
@@ -692,7 +707,7 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 		{
 			thread_count++;
 			this_sg_idx = (ithread+first_sg_idx) % sgpln->n_sgprt;
-			sgpln->sgprt[this_sg_idx].data_buf = vdif_buf + frames_written*(sgpln->sgprt[0].sgi->read_size)/sizeof(uint32_t);
+			sgpln->sgprt[this_sg_idx].data_buf = vdif_buf + frames_written*(sgpln->sgprt[0].sgi->pkt_size)/sizeof(uint32_t);
 			sgpln->sgprt[this_sg_idx].n_frames = (n_frames-frames_written)<frames_per_block ? (n_frames-frames_written) : frames_per_block;
 			thread_result = pthread_create(&(sg_threads[ithread]),NULL,&sgthread_write_block,&(sgpln->sgprt[this_sg_idx]));
 			if (thread_result != 0)
@@ -726,10 +741,15 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
+	return frames_written;
 }
 
 /*
  * Close scatter gather write plan
+ * Arguments:
+ *   SGPlan *sgpln -- Pointer to SGPlan opened in write-mode.
+ * Return:
+ *   void
  */
 void close_sg_write_plan(SGPlan *sgpln)
 {
@@ -775,7 +795,7 @@ void close_sg_write_plan(SGPlan *sgpln)
 
 //////////////////////////////////////////////////////////////////////// THREAD IMPLEMENTATIONS
 /* 
- * Create an SGInfo instance for the given filename.
+ * Create an SGInfo instance for reading for the given filename.
  * Arguments:
  *   void *arg -- Pointer to filename string.
  * Returns:
@@ -806,8 +826,15 @@ static void * sgthread_fill_read_sgi(void *arg)
 	return (void *)sgi;
 }
 
-/*
- * Create SG file and set SGInfo properties accordingly.
+/* Create an SGInfo instance for writing for the given filename.
+ * Arguments:
+ *   void *arg -- Pointer to filename string.
+ * Returns:
+ *   void * -- Pointer to SGInfo instance if the the file could be 
+ *     opened for writing and mapped to memory (i.e. valid SGInfo 
+ *     instance could be created), or NULL otherwise.
+ * Notes:
+ *   This method is suitable for a call via pthread_create.
  */
 static void * sgthread_fill_write_sgi(void *arg)
 {
@@ -864,13 +891,15 @@ static void * sgthread_fill_write_sgi(void *arg)
 /*
  * Read one block's worth of VDIF packets from the given SG file.
  * Arguments:
- *   void *arg -- MsgToSGThread by reference that contains a pointer to 
+ *   void *arg -- SGPart by reference that contains a pointer to 
  *     a valid SGInfo instance, and an index specifying which block to
  *     read.
  * Returns:
- *   void *arg -- SGPart pointer associated with the SG file to be read 
- *     from.
+ *   void *arg -- NULL
  * Notes:
+ *   Upon successful read, the data_buf and n_frames fields of the 
+ *     received SGPart instance are filled with VDIF data and a frame
+ *     count, respectively.
  *   This method is compatible with pthread.
  */
 static void * sgthread_read_block(void *arg)
@@ -884,9 +913,6 @@ static void * sgthread_read_block(void *arg)
 	SGPart *sgprt = (SGPart *)arg;
 	uint32_t *start = NULL;
 	uint32_t *end = NULL;
-	int ii;
-	uint32_t *data_buf;// pointer to VDIF data buffer
-	uint32_t n_frames;
 	
 	// check if this is a valid block number
 	if (sgprt->iblock < sgprt->sgi->sg_total_blks) 
@@ -907,7 +933,17 @@ static void * sgthread_read_block(void *arg)
 }
 
 /* 
- * Write a block
+ * Write one block's worht of VDIF packets to the given SG file.
+ * Arguments:
+ *   void *arg -- SGPart by reference that contains the data to be 
+ *     written as well as a reference to the SGInfo for the file to 
+ *     write to.
+ * Return:
+ *   void *arg -- NULL
+ * Notes:
+ *   The data_buf and n_frames fields in the SGPart instance contain the
+ *     VDIF data and frame count, respectively, that should be written 
+ *     as the single next block in the SG file.
  */
 static void * sgthread_write_block(void *arg)
 {
@@ -924,11 +960,11 @@ static void * sgthread_write_block(void *arg)
 					.packet_format = VDIF };
 	struct wb_header_tag wbht = { 
 					.blocknum = sgprt->iblock,
-					.wb_size = sgprt->sgi->read_size*sgprt->n_frames + sizeof(struct wb_header_tag)};
+					.wb_size = sgprt->sgi->pkt_size*sgprt->n_frames + sizeof(struct wb_header_tag)};
 	/* If first block, write file header */
 	if (sgprt->iblock == 0)
 	{
-		fht.packet_size = sgprt->sgi->read_size;
+		fht.packet_size = sgprt->sgi->pkt_size;
 		fht.block_size = fht.packet_size*(WBLOCK_SIZE/fht.packet_size) + sizeof(struct wb_header_tag);
 		if (write_to_sg(sgprt->sgi, (void *)&fht, sizeof(struct file_header_tag)) == -1)
 		{
@@ -943,7 +979,7 @@ static void * sgthread_write_block(void *arg)
 		return NULL;
 	}
 	/* Write data */
-	if (write_to_sg(sgprt->sgi, (void *)(sgprt->data_buf), sgprt->sgi->read_size*sgprt->n_frames) == -1)
+	if (write_to_sg(sgprt->sgi, (void *)(sgprt->data_buf), sgprt->sgi->pkt_size*sgprt->n_frames) == -1)
 	{
 		fprintf(stderr,"Unable to write data block to SG in thread.\n");
 		return NULL;
@@ -958,6 +994,16 @@ static void * sgthread_write_block(void *arg)
 
 /*
  * Write to SG file and resize if necessary
+ * Arguments:
+ *   SGInfo *sgi -- Pointer to SGInfo instance for the file to be 
+ *     written to.
+ *   const void *src -- Pointer to buffer containing source data.
+ *   size_t n -- Number of bytes to be written from the source data.
+ * Return:
+ *   int -- 0 on success, -1 on failure
+ * Notes:
+ *   The size of the file is increased as necessary, currently in steps
+ *     of WBLOCK_SIZE (see dplane_proxy.h).
  */
 int write_to_sg(SGInfo *sgi, const void *src, size_t n)
 {
@@ -985,7 +1031,13 @@ int write_to_sg(SGInfo *sgi, const void *src, size_t n)
 }
 
 /*
- * Resize SG file
+ * Resize SG file.
+ * Arguments:
+ *   SGInfo *sgi -- Pointer to SGInfo instance for the file to be 
+ *     resized.
+ *   off_t new_size -- The new file size, in bytes.
+ * Return:
+ *   int -- 0 on success, -1 on failure.
  */
 int resize_to_sg(SGInfo *sgi, off_t new_size)
 {
@@ -1031,7 +1083,13 @@ int resize_to_sg(SGInfo *sgi, off_t new_size)
 
 //////////////////////////////////////////////////////////////////////// TIME ORDERING UTILITIES
 /*
- * Description needed.
+ * Comparison method to sort an array of integers in reverse order, i.e.
+ *   from largest to smallest.
+ * Arguments:
+ *   const void *a -- Integer by reference
+ *   const void *b -- Integer by reference
+ * Return:
+ *   int -- Returns -1 if a > b, 0 if a == b, and 1 if a < b.
  */
 int compare_int_descend(const void *a, const void *b)
 {
@@ -1266,6 +1324,9 @@ int test_sg_parts_contiguous(SGPart *a, SGPart *b)
  *   SGPart *sgprt -- Pointer to SGPart instance.
  * Return:
  *   void
+ * Notes:
+ *   Free memory pointed to by data_buf field (if not NULL), and set it 
+ *     to NULL. Reset frame counter to zero.
  */
 void clear_sg_part_buffer(SGPart *sgprt)
 {
@@ -1290,6 +1351,11 @@ void clear_sg_part_buffer(SGPart *sgprt)
  * Free the resources allocated for an SGInfo structure.
  * Arguments:
  *   SGInfo *sgi -- Pointer to allocated SGInfo structure.
+ * Return:
+ *   void
+ * Notes:
+ *   Free memory pointed to by name field (if not NULL), and free the 
+ *     memory pointed to by sgi.
  */
 void free_sg_info(SGInfo *sgi)
 {
@@ -1316,6 +1382,13 @@ void free_sg_info(SGInfo *sgi)
  * Free the resources allocated for an SGPlan structure.
  * Arguments:
  *   SGPlan *sgpln -- Pointer to allocated SGPlan structure.
+ * Return:
+ *   void
+ * Notes:
+ *   Free each SGPart instance associated with this SGPlan, and finally
+ *     free the SGPlan.
+ *   If this is a read-mode SGPlan, then clear_sg_part_buffer is also
+ *     called on each SGPart instance.
  */
 void free_sg_plan(SGPlan *sgpln)
 {
@@ -1403,6 +1476,16 @@ void init_sg_info(SGInfo *sgi, const char *filename)
 } 
 
 //////////////////////////////////////////////////////////////////////// MISC CHECKS
+/*
+ * Check if this is the first write operation to a write-mode SGPlan.
+ * Arguments:
+ *   SGPlan *sgpln -- Pointer to allocated SGPlan opened in write-mode.
+ * Return:
+ *   int -- 1 if true, 0 if false.
+ * Notes:
+ *   First write assumed when the block counters for all SGPart 
+ *     instances are equal to zero.
+ */
 int first_write_sg_plan(SGPlan *sgpln)
 {
 	#ifdef DEBUG_LEVEL
