@@ -786,7 +786,10 @@ void close_sg_write_plan(SGPlan *sgpln)
 				sg_close(sgpln->sgprt[ii].sgi);
 			}
 		}
-		
+		else
+		{
+			sg_close(sgpln->sgprt[ii].sgi);
+		}
 	}
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
