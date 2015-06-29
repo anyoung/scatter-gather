@@ -65,6 +65,10 @@ static void * sgthread_fill_read_sgi(void *arg);
 static void * sgthread_fill_write_sgi(void *arg);
 static void * sgthread_write_block(void *arg);
 
+/* Handles writing and resizing of files through mmap */
+int write_to_sg(SGInfo *sgi, const void *src, size_t n);
+int resize_to_sg(SGInfo *sgi, off_t new_size);
+
 /* Memory management */
 void clear_sg_part_buffer(SGPart *sgprt);
 void free_sg_info(SGInfo *sgi);
@@ -74,12 +78,11 @@ void init_sg_info(SGInfo *sgi, const char *filename);
 /* Misc checks */
 int first_write_sgplan(SGPlan *sgpln);
 
-
 //////////////////////////////////////////////////////////////////////// SCATTER GATHER READING
 /*
  * Allocate memory and fill it with SGInfo instances.
  * Arguments:
- *   SGPlan **sgplan -- Address of SGPlan pointer to allocate memory.
+ *   SGPlan **sgpln -- Address of SGPlan pointer to allocate memory.
  *   const char *pattern -- Filename pattern to search for.
  *   const char *fmtstr -- Format string used to compile the file full
  *     path. It should have the form <..>%d<..>%d<..>%s where the first
@@ -111,7 +114,7 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int itmp; // just a counter
@@ -130,24 +133,24 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	/* Step through all modules and disks, and access files that 
 	 * match the pattern.
 	 */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tLaunching threads.");
 	#endif
 	for (imod=0; imod<n_mod; imod++)
 	{
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tAccessing file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
@@ -159,18 +162,18 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 			}
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tJoining threads.");
 	#endif
 	for (imod=0; imod<n_mod; imod++)
 	{
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
@@ -184,7 +187,7 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 			if (sgi_tmp->smi.mmfd > 0)
 			{
 				memcpy(sgi_buf+valid_sgi++, sgi_tmp, sizeof(SGInfo));
-				#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+				#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 					sg_report(&(sgi_buf[valid_sgi-1]),"\tSG report (sgi_buf):");
 					DEBUGMSG("\t\t\tClosing SGInfo.");
 				#endif
@@ -200,13 +203,13 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	{
 		/* Done with this, free it. */
 		free(sgi_buf);
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			DEBUGMSG_LEAVEFUNC;
 		#endif
 		return 0;
 	}
 	/* Allocate space for storing valid SGInfos. */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tAllocating buffer space and copying SGInfo.");
 	#endif
 	
@@ -231,7 +234,7 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	(*sgpln)->n_sgprt = valid_sgi;
 	/* Done with the temporary buffer, free it. */
 	free(sgi_buf);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		print_sg_plan(*sgpln,"\t");
 		DEBUGMSG_LEAVEFUNC;
 	#endif
@@ -267,7 +270,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 		print_sg_plan(sgpln,"\t");
 	#endif
@@ -287,12 +290,12 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	/* Check if read mode */
 	if (sgpln->sgm != SCATGAT_MODE_READ)
 	{
-		perror("Trying to read from write-mode SGPlan.");
+		fprintf(stderr,"Trying to read from non-read-mode SGPlan.\n");
 		return -1;
 	}
 	
 	/* Launch threads to read data */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tLaunching threads.");
 	#endif
 	for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
@@ -317,7 +320,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	 * is always smaller than or equal to the number of estimated frames
 	 */
 	*vdif_buf = (uint32_t *)malloc(frames_estimate*frame_size);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tJoining threads.");
 	#endif
 	/* Join the threads */
@@ -342,13 +345,13 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 			}
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		print_sg_plan(sgpln,"\t");
 	#endif
 	
 /***********************************************************************
- * For now, ignore discontinuity in the data.
- *
+ * This part of the code checks continuity of data across block 
+ * boundaries.
  */
 	n_contiguous_blocks = map_sg_parts_contiguous(sgpln, mapping);
 	if (n_contiguous_blocks == 0)
@@ -363,13 +366,16 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 		frames_read += sgpln->sgprt[mapping[isgprt]-1].n_frames;
 		clear_sg_part_buffer(&(sgpln->sgprt[mapping[isgprt]-1]));
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		snprintf(_dbgmsg,_DBGMSGLEN,"Found %d contiguous blocks\n",n_contiguous_blocks);
 		DEBUGMSG(_dbgmsg);
 	#endif
- /*
- *
- **********************************************************************/
+/*
+ */
+/***********************************************************************
+ * This part of the code ignores discontinuities of data across block 
+ * boundaries.
+ */
 	//~ for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
 	//~ {
 		//~ if (sg_threads_mask[ithread] == 1 && sgpln->sgprt[ithread].n_frames > 0)
@@ -380,7 +386,9 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 			//~ clear_sg_part_buffer(&(sgpln->sgprt[ithread]));
 		//~ }
 	//~ } 
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+/*
+ */
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		print_sg_plan(sgpln,"\t");
 		DEBUGMSG_LEAVEFUNC;
 	#endif
@@ -414,7 +422,7 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, uint32_t **vdif_buf)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int ithread; // thread counter
@@ -428,12 +436,12 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, uint32_t **vdif_buf)
 	/* Check if read mode */
 	if (sgpln->sgm != SCATGAT_MODE_READ)
 	{
-		perror("Trying to read from write-mode SGPlan.");
+		fprintf(stderr,"Trying to read from non-read-mode SGPlan.\n");
 		return -1;
 	}
 	
 	/* Launch threads to read data */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tLaunching threads.");
 	#endif
 	for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
@@ -448,7 +456,7 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, uint32_t **vdif_buf)
 	}
 	/* Create storage buffer. */
 	*vdif_buf = (uint32_t *)malloc(frames_estimate*frame_size);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tJoining threads.");
 	#endif
 	/* Join the threads and copy data. */
@@ -466,7 +474,7 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, uint32_t **vdif_buf)
 			frames_read += sgpln->sgprt[ithread].n_frames;
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	/* Return the frame count. */
@@ -474,22 +482,31 @@ int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, uint32_t **vdif_buf)
 }
 
 /*
- * Close scatter gather read plan
+ * Close scatter gather read plan.
+ * Arguments:
+ *   SGPlan *sgpln -- Pointer to SGPlan opened in read mode.
+ * Return:
+ *   void
  */
 void close_sg_read_plan(SGPlan *sgpln)
 {
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
+	/* Check if read mode */
+	if (sgpln->sgm != SCATGAT_MODE_READ)
+	{
+		fprintf(stderr,"Cannot close non-read-mode SGPlan as read-mode.\n");
+	}
 	int ii;
 	for (ii=0; ii<sgpln->n_sgprt; ii++)
 	{
 		sg_close(sgpln->sgprt[ii].sgi);
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -506,7 +523,7 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int itmp; // just a counter
@@ -523,24 +540,24 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	/* Step through all modules and disks, and access files that 
 	 * match the pattern.
 	 */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tLaunching threads.");
 	#endif
 	for (imod=0; imod<n_mod; imod++)
 	{
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tCreating file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
@@ -552,24 +569,24 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 			}
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG("\tLaunching threads.");
 	#endif
 	for (imod=0; imod<n_mod; imod++)
 	{
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			snprintf(_dbgmsg,_DBGMSGLEN,"\t\tmod[%d] = %d",imod,mod_list[imod]);
 			DEBUGMSG(_dbgmsg);
 		#endif
 		for (idisk=0; idisk<n_disk; idisk++)
 		{
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tdisk[%d] = %d",idisk,disk_list[idisk]);
 				DEBUGMSG(_dbgmsg);
 			#endif
 			ithread = imod*n_disk + idisk;
 			snprintf(filename[ithread],PATH_MAX,fmtstr,mod_list[imod],disk_list[idisk],pattern);
-			#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 				snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tCreating file '%s'.",filename[ithread]);
 				INFOMSG(_dbgmsg);
 			#endif
@@ -585,7 +602,7 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 			}
 			else
 			{
-				#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+				#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 					snprintf(_dbgmsg,_DBGMSGLEN,"\t\t\tUnable to create file '%s'.",filename[ithread]);
 					WARNINGMSG(_dbgmsg);
 				#endif
@@ -601,7 +618,7 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	 * the malloc'ed NAME to which we still keep a pointer.
 	 */
 	free(sgi_tmp);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return valid_sgi;
@@ -615,18 +632,24 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int ii;
 	int ithread; // thread counter
+	int ipass; // passes through data
 	int thread_result; // result of calls to pthread methods
 	pthread_t sg_threads[sgpln->n_sgprt]; // the pthreads used
+	int frames_per_block;
+	int frames_written = 0;
+	int first_sg_idx = 0;
+	int this_sg_idx;
+	int thread_count;
 	
 	/* Check if read mode */
 	if (sgpln->sgm != SCATGAT_MODE_WRITE)
 	{
-		perror("Trying to write to read-mode SGPlan.");
+		fprintf(stderr,"Trying to write to non-write-mode SGPlan.\n");
 		return -1;
 	}
 	
@@ -637,9 +660,9 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 		VDIFHeader *vdif_header = (VDIFHeader *)vdif_buf;
 		for (ii=0; ii<sgpln->n_sgprt; ii++)
 		{
-			sgpln->sgprt[ii].sgi->pkt_size = vdif_header->w3.df_len * 8;
+			sgpln->sgprt[ii].sgi->read_size = vdif_header->w3.df_len * 8;
 			sgpln->sgprt[ii].sgi->pkt_offset = sizeof(VDIFHeader);
-			sgpln->sgprt[ii].sgi->read_size = vdif_header->w3.df_len * 8 + sizeof(VDIFHeader);
+			sgpln->sgprt[ii].sgi->pkt_size = vdif_header->w3.df_len * 8 - sizeof(VDIFHeader);
 			sgpln->sgprt[ii].sgi->first_secs = vdif_header->w1.secs_inre;
 			sgpln->sgprt[ii].sgi->first_frame = vdif_header->w2.df_num_insec;
 			sgpln->sgprt[ii].sgi->ref_epoch = vdif_header->w2.ref_epoch;
@@ -649,37 +672,58 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 	{
 		// TODO: Check if incoming packets are valid?
 	}
-	/* TODO:
-	 * -Subdivide VDIF buffer into blocks.
-	 */
-	 
-	/* Launch threads to read data */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		DEBUGMSG("\tLaunching threads.");
-	#endif
-	for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
+	frames_per_block = WBLOCK_SIZE/sgpln->sgprt[0].sgi->read_size;
+	/* Find the first SG file that is short */
+	for (ithread=1; ithread<sgpln->n_sgprt; ithread++)
 	{
-		//~ thread_result = pthread_create(&(sg_threads[ithread]),NULL,&sgthread_read_block,&(sgpln->sgprt[ithread]));
-		//~ if (thread_result != 0)
-		//~ {
-			//~ perror("Unable to create thread.");
-			//~ exit(EXIT_FAILURE);
-		//~ }
+		if (sgpln->sgprt[ithread].iblock < sgpln->sgprt[first_sg_idx].iblock)
+		{
+			first_sg_idx = ithread;
+		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		DEBUGMSG("\tJoining threads.");
-	#endif
-	/* Join the threads and copy data. */
-	for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
+	/* While there is data unwritten, pass through write-cycle */
+	while (frames_written < n_frames)
 	{
-		//~ thread_result = pthread_join(sg_threads[ithread],NULL);
-		//~ if (thread_result != 0)
-		//~ {
-			//~ perror("Unable to join thread.");
-			//~ exit(EXIT_FAILURE);
-		//~ }
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			DEBUGMSG("\tLaunching threads.");
+		#endif
+		thread_count = 0;
+		for (ithread=0; ithread<sgpln->n_sgprt && frames_written<n_frames; ithread++)
+		{
+			thread_count++;
+			this_sg_idx = (ithread+first_sg_idx) % sgpln->n_sgprt;
+			sgpln->sgprt[this_sg_idx].data_buf = vdif_buf + frames_written*(sgpln->sgprt[0].sgi->read_size)/sizeof(uint32_t);
+			sgpln->sgprt[this_sg_idx].n_frames = (n_frames-frames_written)<frames_per_block ? (n_frames-frames_written) : frames_per_block;
+			thread_result = pthread_create(&(sg_threads[ithread]),NULL,&sgthread_write_block,&(sgpln->sgprt[this_sg_idx]));
+			if (thread_result != 0)
+			{
+				perror("Unable to create thread.");
+				exit(EXIT_FAILURE);
+			}
+			frames_written += sgpln->sgprt[this_sg_idx].n_frames;
+			#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+				snprintf(_dbgmsg,_DBGMSGLEN,"%d / %d frames written.",frames_written,n_frames);
+				DEBUGMSG(_dbgmsg);
+			#endif
+		}
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			DEBUGMSG("\tJoining threads.");
+		#endif
+		for (ithread=0; ithread<thread_count; ithread++)
+		{
+			this_sg_idx = (ithread+first_sg_idx) % sgpln->n_sgprt;
+			thread_result = pthread_join(sg_threads[ithread],NULL);
+			if (thread_result != 0)
+			{
+				perror("Unable to join thread.");
+				exit(EXIT_FAILURE);
+			}
+		}
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			DEBUGMSG("Unwritten frames left, repeat write-cycle.");
+		#endif
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -692,15 +736,39 @@ void close_sg_write_plan(SGPlan *sgpln)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
+	/* Check if write mode plan */
+	if (sgpln->sgm != SCATGAT_MODE_WRITE)
+	{
+		fprintf(stderr,"Cannot close non-write-mode SGPlan as write-mode\n");
+	}
 	int ii;
 	for (ii=0; ii<sgpln->n_sgprt; ii++)
 	{
-		sg_close(sgpln->sgprt[ii].sgi);
+		if (sgpln->sgprt[ii].sgi->smi.size != (sgpln->sgprt[ii].sgi->smi.eomem - sgpln->sgprt[ii].sgi->smi.start))
+		{
+			if (sgpln->sgprt[ii].sgi->smi.size == 0)
+			{
+				/* Reset size to original value, to fool sg_close() */
+				sgpln->sgprt[ii].sgi->smi.size = sgpln->sgprt[ii].sgi->smi.eomem - sgpln->sgprt[ii].sgi->smi.start;
+				sg_close(sgpln->sgprt[ii].sgi);
+				/* Then delete the file */
+				if (unlink(sgpln->sgprt[ii].sgi->name) == -1)
+				{
+					perror("Unable to remove empty file.");
+				}
+			}
+			else
+			{
+				resize_to_sg(sgpln->sgprt[ii].sgi, sgpln->sgprt[ii].sgi->smi.size);
+				sg_close(sgpln->sgprt[ii].sgi);
+			}
+		}
+		
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -721,7 +789,7 @@ static void * sgthread_fill_read_sgi(void *arg)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	char *filename = (char *)arg; // filename to try to access
@@ -729,7 +797,7 @@ static void * sgthread_fill_read_sgi(void *arg)
 	sgi->name = NULL;
 	sgi->verbose = 0;
 	sg_open(filename,sgi);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		snprintf(_dbgmsg,_DBGMSGLEN,"\tsgi->smi.mmfd = %d",sgi->smi.mmfd);
 		DEBUGMSG(_dbgmsg);
 		sg_report(sgi,"\tSG Report:");
@@ -746,7 +814,7 @@ static void * sgthread_fill_write_sgi(void *arg)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	char *filename = (char *)arg; // filename to try to access
@@ -763,17 +831,19 @@ static void * sgthread_fill_write_sgi(void *arg)
 		return (void *)NULL;
 	}
 	/* Guess initial file size equal to ideal single write block, 
-	 * defined in dplane_proxy.h
+	 * defined in dplane_proxy.h. This size setting is just temporary,
+	 * and needs to be reset to zero to indicate the actual number of
+	 * bytes written to file.
 	 */
-	sgi->smi.size = WBLOCK_SIZE;
-	//~ * -Truncate file to initial size
+	sgi->smi.size = WBLOCK_SIZE + sizeof(struct file_header_tag);
+	/* Truncate file to initial size */
 	if (ftruncate(sgi->smi.mmfd, sgi->smi.size) == -1)
 	{
 		perror("Unable to reset file size.");
 		free_sg_info(sgi);
 		return (void *)NULL;
 	}
-	//~ * -Create mmap
+	/* Create mmap */
 	sgi->smi.start = mmap(NULL, sgi->smi.size, SG_MMAP_WRITE_OPEN_PROTO, SG_MMAP_WRITE_OPEN_MODE, sgi->smi.mmfd, 0);
 	if (sgi->smi.start == MAP_FAILED)
 	{
@@ -783,8 +853,9 @@ static void * sgthread_fill_write_sgi(void *arg)
 	}
 	sgi->smi.eomem = sgi->smi.start + sgi->smi.size;
 	sgi->smi.users = 1;
-	//~ */
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	/* And reset file size to number of bytes written, zero */
+	sgi->smi.size = 0;
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return (void *)sgi;
@@ -807,7 +878,7 @@ static void * sgthread_read_block(void *arg)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	SGPart *sgprt = (SGPart *)arg;
@@ -829,7 +900,7 @@ static void * sgthread_read_block(void *arg)
 			memcpy(sgprt->data_buf,start,sgprt->n_frames*sgprt->sgi->pkt_size);
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return NULL;
@@ -843,42 +914,120 @@ static void * sgthread_write_block(void *arg)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	SGPart *sgprt = (SGPart *)arg;
-	/* TODO: 
-	 * -Check number of VDIF frames against current file size, and
-	 * resize if necessary, with update to mmap.
-	 * -Copy VDIF buffer data to mmap.
-	 * -Update the SGInfo fields
-	 * -Reset frame counter to zero (or subtract number of written 
-	 * frames)
-	// To be filled with every write
-	//~ uint32_t    final_secs;     /* seconds of epoch of final packet */
-	//~ uint32_t    final_frame;    /* frame counter of final packet */
-	//~ uint32_t    sg_wr_block;    /* standard write block size */
-	//~ uint32_t    sg_wr_pkts;     /* pkts in standard write block */
-	//~ uint32_t    sg_se_block;    /* ending write block size */
-	//~ uint32_t    sg_se_pkts;     /* pkts in ending write block */
-	//~ uint32_t    sg_total_blks;  /* total number of blocks */
-	// To be left unfilled
-	//~ uint32_t    frame_cnt_max;  /* maximum frame counter value seen */
-	//~ VDIFsigu    vdif_signature; /* header signature */
-	//~ uint32_t    sg_wr_blks_bs;  /* number of write blocks before sb */
-	//~ uint32_t    sg_wr_blks_as;  /* number of write blocks after sb */
-	//~ uint32_t    sg_wr_pkts_bs;  /* pkts in normal wbs before sb */
-	//~ uint32_t    sg_wr_pkts_as;  /* pkts in normal wbs after sb */
-	//~ uint32_t    sg_sh_block;    /* starting write block size */
-	//~ off_t       sg_sh_blk_off;  /* offset in the file */
-	//~ off_t       sg_se_blk_off;  /* offset in the file */
-	//~ uint32_t    sg_sh_pkts;     /* pkts in starting write block */
-	//~ double      eval_time;      /* diagnostic on file access time */
-    #if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	struct file_header_tag fht = { 
+					.sync_word = SYNC_WORD, 
+					.version = FILE_VERSION, 
+					.packet_format = VDIF };
+	struct wb_header_tag wbht = { 
+					.blocknum = sgprt->iblock,
+					.wb_size = sgprt->sgi->read_size*sgprt->n_frames + sizeof(struct wb_header_tag)};
+	/* If first block, write file header */
+	if (sgprt->iblock == 0)
+	{
+		fht.packet_size = sgprt->sgi->read_size;
+		fht.block_size = fht.packet_size*(WBLOCK_SIZE/fht.packet_size) + sizeof(struct wb_header_tag);
+		if (write_to_sg(sgprt->sgi, (void *)&fht, sizeof(struct file_header_tag)) == -1)
+		{
+			fprintf(stderr,"Unable to write file header tag to SG in thread.\n");
+			return NULL;
+		}
+	}
+	/* Write block header */
+	if (write_to_sg(sgprt->sgi, (void *)&wbht, sizeof(struct wb_header_tag)) == -1)
+	{
+		fprintf(stderr,"Unable to write block header tag to SG in thread.\n");
+		return NULL;
+	}
+	/* Write data */
+	if (write_to_sg(sgprt->sgi, (void *)(sgprt->data_buf), sgprt->sgi->read_size*sgprt->n_frames) == -1)
+	{
+		fprintf(stderr,"Unable to write data block to SG in thread.\n");
+		return NULL;
+	}
+	/* Update block counter for this SG file */
+	sgprt->iblock++;
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return NULL;
-} 
+}
+
+/*
+ * Write to SG file and resize if necessary
+ */
+int write_to_sg(SGInfo *sgi, const void *src, size_t n)
+{
+	#ifdef DEBUG_LEVEL
+		char _dbgmsg[_DBGMSGLEN];
+	#endif
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_ENTERFUNC;
+	#endif
+	/* Check if resize is necessary */
+	if (sgi->smi.size+n > (off_t)(sgi->smi.eomem-sgi->smi.start))
+	{
+		if (resize_to_sg(sgi, (off_t)(sgi->smi.eomem-sgi->smi.start)+WBLOCK_SIZE) == -1)
+		{
+			return -1;
+		}
+	}
+	/* Memcopy */
+	memcpy(sgi->smi.start+sgi->smi.size, src, n);
+	sgi->smi.size += n;
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_LEAVEFUNC;
+	#endif
+	return 0;
+}
+
+/*
+ * Resize SG file
+ */
+int resize_to_sg(SGInfo *sgi, off_t new_size)
+{
+	#ifdef DEBUG_LEVEL
+		char _dbgmsg[_DBGMSGLEN];
+	#endif
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_ENTERFUNC;
+	#endif
+	/* Truncate file to new size */
+	if (ftruncate(sgi->smi.mmfd, new_size) == -1)
+	{
+		perror("Unable to reset file size.");
+		return -1;
+	}
+	/* Re-mmap for non-zero new_size, and unmap if size is zero. */
+	if (new_size != (off_t)0)
+	{
+		sgi->smi.start = mremap(sgi->smi.start, (sgi->smi.eomem - sgi->smi.start), new_size, MREMAP_MAYMOVE);
+		if (sgi->smi.start == MAP_FAILED)
+		{
+			perror("Unable to map file.");
+			return -1;
+		}
+		sgi->smi.eomem = sgi->smi.start + new_size;
+	}
+	else
+	{
+		if (munmap(sgi->smi.start, (sgi->smi.eomem - sgi->smi.start)) == -1)
+		{
+			perror("Unable to unmap file for resize to zero.");
+			return -1;
+		}
+		sgi->smi.start = NULL;
+		sgi->smi.eomem = NULL;
+	}
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_LEAVEFUNC;
+	#endif
+	return 0;
+}
+
 
 //////////////////////////////////////////////////////////////////////// TIME ORDERING UTILITIES
 /*
@@ -907,7 +1056,7 @@ int compare_sg_info(const void *a, const void *b)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	SGInfo *sgi_a = (SGInfo *)a;
@@ -917,7 +1066,7 @@ int compare_sg_info(const void *a, const void *b)
 	{
 		result = sgi_a->first_frame < sgi_b->first_frame ? -1 : sgi_a->first_frame > sgi_b->first_frame;
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return result;
@@ -939,7 +1088,7 @@ int compare_sg_part(const void *a, const void *b)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	SGPart *sgprt_a = (SGPart *)a;
@@ -952,19 +1101,19 @@ int compare_sg_part(const void *a, const void *b)
 	uint32_t df_num_insec_b = FIRST_VDIF_DF_NUM_INSEC(sgprt_b);
 	
 	int result = secs_inre_a < secs_inre_b ? -1 : secs_inre_a > secs_inre_b;
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 		snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,secs_inre_a < secs_inre_b,-1,secs_inre_a > secs_inre_b);
 		INFOMSG(_dbgmsg);
 	#endif
 	if (result == 0)
 	{
 		result = df_num_insec_a < df_num_insec_b ? -1 : df_num_insec_a > df_num_insec_b;
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
 			snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,df_num_insec_a < df_num_insec_b,-1,df_num_insec_a > df_num_insec_b);
 			INFOMSG(_dbgmsg);
 		#endif
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		snprintf(_dbgmsg,_DBGMSGLEN,"Result = %d\n",result);
 		DEBUGMSG(_dbgmsg);
 		DEBUGMSG_LEAVEFUNC;
@@ -989,7 +1138,7 @@ int map_sg_parts_contiguous(SGPlan *sgpln, int *mapping)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int ii, jj;
@@ -1047,7 +1196,7 @@ int map_sg_parts_contiguous(SGPlan *sgpln, int *mapping)
 	{
 		mapping[jj] = -mapping[jj];
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		
 		printf("Mapping = [");
 		for (ii=0; ii<sgpln->n_sgprt; ii++)
@@ -1078,7 +1227,7 @@ int test_sg_parts_contiguous(SGPart *a, SGPart *b)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	/* Seconds since reference epoch. */
@@ -1098,13 +1247,13 @@ int test_sg_parts_contiguous(SGPart *a, SGPart *b)
 	{
 		if (df_num_insec_a == VDIF_FRAMES_PER_SECOND-1 && df_num_insec_b == 0)
 		{
-		#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			DEBUGMSG_LEAVEFUNC;
 		#endif
 			return 1;
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return 0;
@@ -1123,7 +1272,7 @@ void clear_sg_part_buffer(SGPart *sgprt)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	sgprt->n_frames = 0;
@@ -1132,7 +1281,7 @@ void clear_sg_part_buffer(SGPart *sgprt)
 		free(sgprt->data_buf);
 		sgprt->data_buf = NULL;
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -1147,7 +1296,7 @@ void free_sg_info(SGInfo *sgi)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	if (sgi != NULL)
@@ -1158,7 +1307,7 @@ void free_sg_info(SGInfo *sgi)
 		}
 		free(sgi);
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -1173,18 +1322,21 @@ void free_sg_plan(SGPlan *sgpln)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int ii;
 	for (ii=0; ii<sgpln->n_sgprt; ii++)
 	{
-		clear_sg_part_buffer(&(sgpln->sgprt[ii]));
+		if (sgpln->sgm == SCATGAT_MODE_READ)
+		{
+			clear_sg_part_buffer(&(sgpln->sgprt[ii]));
+		}
 		free_sg_info(sgpln->sgprt[ii].sgi);
 	}
 	free(sgpln->sgprt);
 	free(sgpln);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 }
@@ -1206,7 +1358,7 @@ void init_sg_part(SGPart *sgprt, const SGInfo *sgi)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	sgprt->sgi = (SGInfo *)malloc(sizeof(SGInfo));
@@ -1214,7 +1366,7 @@ void init_sg_part(SGPart *sgprt, const SGInfo *sgi)
 	sgprt->iblock = 0;
 	sgprt->data_buf = NULL;
 	sgprt->n_frames = 0;
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif	
 }
@@ -1235,7 +1387,7 @@ void init_sg_info(SGInfo *sgi, const char *filename)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	sgi->name = (char *)malloc(strlen(filename)*sizeof(char));
@@ -1245,7 +1397,7 @@ void init_sg_info(SGInfo *sgi, const char *filename)
 	sgi->sg_version = FILE_VERSION;
 	sgi->sg_fht_size = sizeof(struct file_header_tag);
 	sgi->sg_wbht_size = sizeof(struct wb_header_tag);
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif	
 } 
@@ -1256,7 +1408,7 @@ int first_write_sg_plan(SGPlan *sgpln)
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
 	int ii;
@@ -1267,7 +1419,7 @@ int first_write_sg_plan(SGPlan *sgpln)
 			return 0;
 		}
 	}
-	#if DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_LEAVEFUNC;
 	#endif
 	return 1;

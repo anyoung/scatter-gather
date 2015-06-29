@@ -37,11 +37,13 @@
 #define LAST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(&(a->data_buf[(a->n_frames-1)*(a->sgi->pkt_size)/sizeof(uint32_t)])))->w2.df_num_insec
 #define FIRST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(a->data_buf))->w2.df_num_insec
 
+/* Set SGPlan to read / write mode */
 enum scatgat_mode {
 	SCATGAT_MODE_READ,
 	SCATGAT_MODE_WRITE
 };
 
+/* Encapsulates single SG file */
 typedef struct sg_part {
 	SGInfo *sgi;														// points to SGInfo for single SG file
 	off_t iblock; 														// next block to read from / write to in SG file
@@ -49,6 +51,7 @@ typedef struct sg_part {
 	uint32_t n_frames; 													// number of VDIF frames in buffer
 } SGPart;
 
+/* Encapsulates group of SG files */
 typedef struct sg_plan {
 	int sgm;															// scatgat_mode: read / write
 	int n_sgprt; 														// number of SGPart elements
