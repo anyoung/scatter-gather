@@ -59,9 +59,9 @@ typedef struct sg_plan {
 } SGPlan;
 
 /*
- * Allocate memory and fill it with SGInfo instances.
+ * Create an SGPlan instance in read-mode.
  * Arguments:
- *   SGPlan **sgplan -- Address of SGPlan pointer to allocate memory.
+ *   SGPlan **sgpln -- Address of SGPlan pointer to allocate memory.
  *   const char *pattern -- Filename pattern to search for.
  *   const char *fmtstr -- Format string used to compile the file full
  *     path. It should have the form <..>%d<..>%d<..>%s where the first
@@ -75,11 +75,6 @@ typedef struct sg_plan {
  * Returns:
  *   int -- Number of SGInfo instances (SG files found mathcing pattern)
  * Notes:
- *   All names that match the pattern /mnt/disks/MOD/DISK/data/PATTERN
- *     where MOD and DISK are elements of mod_list and disk_list, 
- *     respectively, and PATTERN is the string in pattern, are given
- *     to sg_access. For each valid SG file found an SGInfo entry is 
- *     allocated in the buffer pointed to by *sgi.
  *   The SGInfo entries stored in sgplan are sorted in ascending order
  *     according to the timestamp on the first VDIF frame in each SG 
  *     file.
@@ -99,8 +94,7 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
  *     reading the next block.
  * Returns:
  *   int -- The number of VDIF frames contained in the buffer, zero if
- *     end of all files reached, and -1 if the data is no longer 
- *     contiguous.
+ *     end no frames could be read, and -1 on error.
  * Notes:
  *   This method attempts to read a contiguous set of VDIF frames that
  *     is the equivalent of one SG block per SG file contained in the SG
@@ -111,30 +105,39 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
  *     buffer of the associated SGPart, inside SGPlan. Upon subsequent 
  *     calls to this method no further blocks of data is read from that 
  *     particular SG file until its block can be stitched togther with 
- *     the contiguous flow.
+ *     the contiguous flow. However, data continuity is NOT checked 
+ *     between consecutive calls to this method.
  *   Block counter for each SGPart is updated if frames where read from
  *     that file.
+ *   Memory is always allocated to *vdif_buf based on the estimated 
+ *     number of frames expected to be read from file(s). It is left to
+ *     the user to free *vdif_buf irrespective of whether data was 
+ *     received or not.
  */
 int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf);
 
 /*
  * Read one block's worth of VDIF frames from a group of SG files.
  * Arguments:
- *   SGInfo *sgi -- Array of valid SGInfo instances (i.e. had to have
- *     been accessed prior to calling this method).
+ *   SGPlan *sgpln -- SGPlan instance created in read-mode.
  *   int n_sgi -- Number of SGInfo elements in the array.
  *   off_t iblock -- The block index.
  *   uint32_t **vdif_buf -- Address of a pointer which can be used to
  *     store the location of the VDIF buffer created and filled.
  * Returns:
- *   int -- The number of VDIF frames contained in the buffer.
+ *   int -- The number of VDIF frames contained in the buffer, zero if
+ *     no frames read, and -1 on error.
  * Notes:
  *   This method creates as many threads as there are SGInfo elements in 
  *     the array, using pthread_create with sgthread_read_block as the
  *     thread start method.
  *   The VDIF buffer size is determined by counting the packets per 
  *     block total for all SGInfo instances, although the actual used
- *     size may be smaller if some of the blocks are short.
+ *     size may be smaller if one of the blocks is short.
+*   Memory is always allocated to *vdif_buf based on the estimated 
+ *     number of frames expected to be read from file(s). It is left to
+ *     the user to free *vdif_buf irrespective of whether data was 
+ *     received or not.
  */
 int read_block_vdif_frames(SGPlan *sgpln, off_t iblock, 
 							uint32_t **vdif_buf);

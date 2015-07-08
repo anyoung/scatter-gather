@@ -1162,14 +1162,14 @@ int compare_sg_part(const void *a, const void *b)
 	uint32_t df_num_insec_b = FIRST_VDIF_DF_NUM_INSEC(sgprt_b);
 	
 	int result = secs_inre_a < secs_inre_b ? -1 : secs_inre_a > secs_inre_b;
-	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,secs_inre_a < secs_inre_b,-1,secs_inre_a > secs_inre_b);
 		INFOMSG(_dbgmsg);
 	#endif
 	if (result == 0)
 	{
 		result = df_num_insec_a < df_num_insec_b ? -1 : df_num_insec_a > df_num_insec_b;
-		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_INFO
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 			snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,df_num_insec_a < df_num_insec_b,-1,df_num_insec_a > df_num_insec_b);
 			INFOMSG(_dbgmsg);
 		#endif
