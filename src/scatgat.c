@@ -30,7 +30,7 @@
 #define DEBUG_LEVEL_INFO 30
 #define DEBUG_LEVEL_WARNING 20
 #define DEBUG_LEVEL_ERROR 10
-//~ #define DEBUG_LEVEL DEBUG_LEVEL_DEBUG
+#define DEBUG_LEVEL DEBUG_LEVEL_DEBUG
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_INFO
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_WARNING
 //~ #define DEBUG_LEVEL DEBUG_LEVEL_ERROR
@@ -345,45 +345,45 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 		print_sg_plan(sgpln,"\t");
 	#endif
 	
-/***********************************************************************
- * This part of the code checks continuity of data across block 
- * boundaries.
- */
-	n_contiguous_blocks = map_sg_parts_contiguous(sgpln, mapping);
-	if (n_contiguous_blocks == 0)
-	{
-		printf("No contiguous blocks found.\n");
-		return 0;
-	}
-	for (isgprt=0; isgprt<n_contiguous_blocks; isgprt++)
-	{
-		memcpy((void *)(*vdif_buf + frames_read*frame_size/sizeof(uint32_t)),
-				(void *)(sgpln->sgprt[mapping[isgprt]-1].data_buf),sgpln->sgprt[mapping[isgprt]-1].n_frames*frame_size);
-		frames_read += sgpln->sgprt[mapping[isgprt]-1].n_frames;
-		clear_sg_part_buffer(&(sgpln->sgprt[mapping[isgprt]-1]));
-	}
-	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg,_DBGMSGLEN,"Found %d contiguous blocks\n",n_contiguous_blocks);
-		DEBUGMSG(_dbgmsg);
-	#endif
-/*
- */
-/***********************************************************************
- * This part of the code ignores discontinuities of data across block 
- * boundaries.
- */
-	//~ for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
+//~ /***********************************************************************
+ //~ * This part of the code checks continuity of data across block 
+ //~ * boundaries.
+ //~ */
+	//~ n_contiguous_blocks = map_sg_parts_contiguous(sgpln, mapping);
+	//~ if (n_contiguous_blocks == 0)
 	//~ {
-		//~ if (sg_threads_mask[ithread] == 1 && sgpln->sgprt[ithread].n_frames > 0)
-		//~ {
-			//~ memcpy((void *)(*vdif_buf + frames_read*frame_size/sizeof(uint32_t)),
-					//~ (void *)(sgpln->sgprt[ithread].data_buf),sgpln->sgprt[ithread].n_frames*frame_size);
-			//~ frames_read += sgpln->sgprt[ithread].n_frames;
-			//~ clear_sg_part_buffer(&(sgpln->sgprt[ithread]));
-		//~ }
-	//~ } 
-/*
- */
+		//~ printf("No contiguous blocks found.\n");
+		//~ return 0;
+	//~ }
+	//~ for (isgprt=0; isgprt<n_contiguous_blocks; isgprt++)
+	//~ {
+		//~ memcpy((void *)(*vdif_buf + frames_read*frame_size/sizeof(uint32_t)),
+				//~ (void *)(sgpln->sgprt[mapping[isgprt]-1].data_buf),sgpln->sgprt[mapping[isgprt]-1].n_frames*frame_size);
+		//~ frames_read += sgpln->sgprt[mapping[isgprt]-1].n_frames;
+		//~ clear_sg_part_buffer(&(sgpln->sgprt[mapping[isgprt]-1]));
+	//~ }
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg,_DBGMSGLEN,"Found %d contiguous blocks\n",n_contiguous_blocks);
+		//~ DEBUGMSG(_dbgmsg);
+	//~ #endif
+//~ /*
+ //~ */
+//~ /***********************************************************************
+ //~ * This part of the code ignores discontinuities of data across block 
+ //~ * boundaries.
+ //~ */
+	for (ithread=0; ithread<sgpln->n_sgprt; ithread++)
+	{
+		if (sg_threads_mask[ithread] == 1 && sgpln->sgprt[ithread].n_frames > 0)
+		{
+			memcpy((void *)(*vdif_buf + frames_read*frame_size/sizeof(uint32_t)),
+					(void *)(sgpln->sgprt[ithread].data_buf),sgpln->sgprt[ithread].n_frames*frame_size);
+			frames_read += sgpln->sgprt[ithread].n_frames;
+			clear_sg_part_buffer(&(sgpln->sgprt[ithread]));
+		}
+	} 
+//~ /*
+ //~ */
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		print_sg_plan(sgpln,"\t");
 		DEBUGMSG_LEAVEFUNC;
@@ -1146,12 +1146,12 @@ int compare_sg_info(const void *a, const void *b)
  */
 int compare_sg_part(const void *a, const void *b)
 {
-	#ifdef DEBUG_LEVEL
-		char _dbgmsg[_DBGMSGLEN];
-	#endif
-	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		DEBUGMSG_ENTERFUNC;
-	#endif
+	//~ #ifdef DEBUG_LEVEL
+		//~ char _dbgmsg[_DBGMSGLEN];
+	//~ #endif
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ DEBUGMSG_ENTERFUNC;
+	//~ #endif
 	SGPart *sgprt_a = (SGPart *)a;
 	SGPart *sgprt_b = (SGPart *)b;
 	/* Seconds since reference epoch. */
@@ -1162,23 +1162,23 @@ int compare_sg_part(const void *a, const void *b)
 	uint32_t df_num_insec_b = FIRST_VDIF_DF_NUM_INSEC(sgprt_b);
 	
 	int result = secs_inre_a < secs_inre_b ? -1 : secs_inre_a > secs_inre_b;
-	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,secs_inre_a < secs_inre_b,-1,secs_inre_a > secs_inre_b);
-		INFOMSG(_dbgmsg);
-	#endif
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d",result,secs_inre_a < secs_inre_b,-1,secs_inre_a > secs_inre_b);
+		//~ INFOMSG(_dbgmsg);
+	//~ #endif
 	if (result == 0)
 	{
 		result = df_num_insec_a < df_num_insec_b ? -1 : df_num_insec_a > df_num_insec_b;
-		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-			snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d\n",result,df_num_insec_a < df_num_insec_b,-1,df_num_insec_a > df_num_insec_b);
-			INFOMSG(_dbgmsg);
-		#endif
+		//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			//~ snprintf(_dbgmsg, _DBGMSGLEN, "%d = %d ? %d : %d",result,df_num_insec_a < df_num_insec_b,-1,df_num_insec_a > df_num_insec_b);
+			//~ INFOMSG(_dbgmsg);
+		//~ #endif
 	}
-	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
-		snprintf(_dbgmsg,_DBGMSGLEN,"Result = %d\n",result);
-		DEBUGMSG(_dbgmsg);
-		DEBUGMSG_LEAVEFUNC;
-	#endif
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg,_DBGMSGLEN,"Result = %d",result);
+		//~ DEBUGMSG(_dbgmsg);
+		//~ DEBUGMSG_LEAVEFUNC;
+	//~ #endif
 	return result;
 }
 
@@ -1245,8 +1245,16 @@ int map_sg_parts_contiguous(SGPlan *sgpln, int *mapping)
 		mapping[idx_min_new] = tmp_map;
 	}
 	/* Check data continuity, and set index negative if not. */
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		snprintf(_dbgmsg,_DBGMSGLEN,"%d / %d dead nodes",dead_nodes,sgpln->n_sgprt);
+		DEBUGMSG(_dbgmsg);
+	#endif
 	for (ii = 0;ii<sgpln->n_sgprt-dead_nodes-1; ii++)
 	{
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			snprintf(_dbgmsg,_DBGMSGLEN,"ii = %d",ii);
+			DEBUGMSG(_dbgmsg);
+		#endif
 		if (!test_sg_parts_contiguous(&(sgpln->sgprt[mapping[ii]-1]),&(sgpln->sgprt[mapping[ii+1]-1])))
 		{
 			break;
@@ -1291,6 +1299,12 @@ int test_sg_parts_contiguous(SGPart *a, SGPart *b)
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
+	
+	// Test if either pointer is NULL
+	if (a == NULL || b == NULL) {
+		return 0;
+	}
+	
 	/* Seconds since reference epoch. */
 	uint32_t secs_inre_a = LAST_VDIF_SECS_INRE(a);
 	uint32_t secs_inre_b = FIRST_VDIF_SECS_INRE(b);
