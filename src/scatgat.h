@@ -32,11 +32,6 @@
 #include "sg_access.h"
 #include "dplane_proxy.h"
 
-#define LAST_VDIF_SECS_INRE(a) ((VDIFHeader *)(&(a->data_buf[(a->n_frames-1)*(a->sgi->pkt_size)/sizeof(uint32_t)])))->w1.secs_inre
-#define FIRST_VDIF_SECS_INRE(a) ((VDIFHeader *)(a->data_buf))->w1.secs_inre
-#define LAST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(&(a->data_buf[(a->n_frames-1)*(a->sgi->pkt_size)/sizeof(uint32_t)])))->w2.df_num_insec
-#define FIRST_VDIF_DF_NUM_INSEC(a) ((VDIFHeader *)(a->data_buf))->w2.df_num_insec
-
 /* Set SGPlan to read / write mode */
 enum scatgat_mode {
 	SCATGAT_MODE_READ,
