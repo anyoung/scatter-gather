@@ -83,6 +83,7 @@ static void * sgthread_fill_write_sgi(void *arg);
 static void * sgthread_write_block(void *arg);
 
 /* Handles writing and resizing of files through mmap */
+int first_write_sg_plan(SGPlan *sgpln);
 int write_to_sg(SGInfo *sgi, const void *src, size_t n);
 int resize_to_sg(SGInfo *sgi, off_t new_size);
 
@@ -326,8 +327,16 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 				perror("Unable to create thread.");
 				exit(EXIT_FAILURE);
 			}
+			/* Remove the frames_estimate increment here ...
 			frames_estimate += sgpln->sgprt[ithread].sgi->sg_wr_pkts;
+			... and put it outside the thread launch loop. If 
+			newly read data maps continuously to already read
+			data, then we underestimate the number of frames
+			that we'll need to put in the output buffer. */
 		}
+		/* As per above, increment frames_estimate here. */
+		frames_estimate += sgpln->sgprt[ithread].sgi->sg_wr_pkts;
+
 	}
 	/* Create storage buffer. Assume that the number of frames read
 	 * is always smaller than or equal to the number of estimated frames
@@ -367,6 +376,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
  * boundaries.
  */
 	n_contiguous_blocks = map_sg_parts_contiguous(sgpln, mapping);
+	//~ printf("n_contiguous_blocks = %d\n",n_contiguous_blocks);
 	if (n_contiguous_blocks == 0)
 	{
 		printf("No contiguous blocks found.\n");
@@ -374,6 +384,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	}
 	for (isgprt=0; isgprt<n_contiguous_blocks; isgprt++)
 	{
+		//~ printf("memcpy %d\n",isgprt);
 		memcpy((void *)(*vdif_buf + frames_read*frame_size/sizeof(uint32_t)),
 				(void *)(sgpln->sgprt[mapping[isgprt]-1].data_buf),sgpln->sgprt[mapping[isgprt]-1].n_frames*frame_size);
 		frames_read += sgpln->sgprt[mapping[isgprt]-1].n_frames;
@@ -400,7 +411,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 		//~ }
 	//~ } 
 //~ /*
- //~ ***********************************************************************/
+//~  ***********************************************************************/
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		print_sg_plan(sgpln,"\t");
 		DEBUGMSG_LEAVEFUNC;
@@ -704,6 +715,7 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 	{
 		// TODO: Check if incoming packets are valid?
 	}
+	printf("WBLOCK_SIZE = %ld, pkt_size = %ld\n",(long int)WBLOCK_SIZE,(long int)sgpln->sgprt[0].sgi->pkt_size);
 	frames_per_block = WBLOCK_SIZE/sgpln->sgprt[0].sgi->pkt_size;
 	/* Find the first SG file that is short */
 	for (ithread=1; ithread<sgpln->n_sgprt; ithread++)
@@ -938,7 +950,7 @@ static void * sgthread_read_block(void *arg)
 	if (sgprt->iblock < sgprt->sgi->sg_total_blks) 
 	{
 		//~ start = sg_pkt_by_blk(sgprt->sgi,0,&(sgprt->n_frames),&end);
-		start = sg_pkt_by_blk(sgprt->sgi,sgprt->iblock,&(sgprt->n_frames),&end);
+		start = sg_pkt_by_blk(sgprt->sgi,sgprt->iblock,(int *)&(sgprt->n_frames),&end);
 		// allocate data storage and copy data to memory
 		sgprt->data_buf = (uint32_t *)malloc(sgprt->n_frames*sgprt->sgi->pkt_size);
 		if (sgprt->data_buf != NULL)
@@ -1213,6 +1225,7 @@ int compare_sg_part(const void *a, const void *b)
  */
 int map_sg_parts_contiguous(SGPlan *sgpln, int *mapping)
 {
+	//~ printf(" -->> map_sg_parts_contiguous\n");
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
 	#endif
@@ -1323,6 +1336,7 @@ int map_sg_parts_contiguous(SGPlan *sgpln, int *mapping)
 		printf("]\n");
 		DEBUGMSG_LEAVEFUNC;
 	#endif
+	//~ printf(" <<-- map_sg_parts_contiguous\n");
 	return return_value;
 }
 
