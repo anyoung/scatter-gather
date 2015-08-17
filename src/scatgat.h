@@ -45,6 +45,7 @@ typedef struct sg_part {
 	off_t iblock; 														// next block to read from / write to in SG file
 	uint32_t *data_buf; 												// points to start VDIF buffer from previous read / for pending write
 	uint32_t n_frames; 													// number of VDIF frames in buffer
+	int inherited_block_count;
 } SGPart;
 
 /* Encapsulates group of SG files */
@@ -52,6 +53,7 @@ typedef struct sg_plan {
 	int sgm;															// scatgat_mode: read / write
 	int n_sgprt; 														// number of SGPart elements
 	SGPart *sgprt; 														// array of SGPart elements (one per SG file)
+	int block_count;
 } SGPlan;
 
 /*

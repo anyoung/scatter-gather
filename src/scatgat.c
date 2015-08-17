@@ -649,6 +649,7 @@ int make_sg_write_plan(SGPlan **sgpln, const char *pattern,
 	}
 	*sgpln = (SGPlan *)malloc(sizeof(SGPlan));
 	(*sgpln)->sgm = SCATGAT_MODE_WRITE;
+	(*sgpln)->block_count = 0;
 	(*sgpln)->n_sgprt = valid_sgi;
 	(*sgpln)->sgprt = (SGPart *)malloc(sizeof(SGPart)*valid_sgi);
 	memcpy((*sgpln)->sgprt, sgprt_tmp, sizeof(SGPart)*valid_sgi);
@@ -738,6 +739,7 @@ int write_vdif_frames(SGPlan *sgpln, uint32_t *vdif_buf, int n_frames)
 			this_sg_idx = (ithread+first_sg_idx) % sgpln->n_sgprt;
 			sgpln->sgprt[this_sg_idx].data_buf = vdif_buf + frames_written*(sgpln->sgprt[0].sgi->pkt_size)/sizeof(uint32_t);
 			sgpln->sgprt[this_sg_idx].n_frames = (n_frames-frames_written)<frames_per_block ? (n_frames-frames_written) : frames_per_block;
+			sgpln->sgprt[this_sg_idx].inherited_block_count = sgpln->block_count++;
 			thread_result = pthread_create(&(sg_threads[ithread]),NULL,&sgthread_write_block,&(sgpln->sgprt[this_sg_idx]));
 			if (thread_result != 0)
 			{
@@ -991,7 +993,7 @@ static void * sgthread_write_block(void *arg)
 					.version = FILE_VERSION, 
 					.packet_format = VDIF };
 	struct wb_header_tag wbht = { 
-					.blocknum = sgprt->iblock,
+					.blocknum = sgprt->inherited_block_count, //.blocknum = sgprt->iblock,
 					.wb_size = sgprt->sgi->pkt_size*sgprt->n_frames + sizeof(struct wb_header_tag)};
 	/* If first block, write file header */
 	if (sgprt->iblock == 0)
