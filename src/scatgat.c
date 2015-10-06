@@ -254,6 +254,113 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
 	return valid_sgi;
 }
 
+int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf) {
+	#ifdef DEBUG_LEVEL
+		char _dbgmsg[_DBGMSGLEN];
+	#endif
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_ENTERFUNC;
+	#endif
+	int num_blocks_to_request = sgpln->n_sgprt/8; //sgpln->n_sgprt;
+	int num_blocks_received = 0;
+	return read_next_block_vdif_frames_limit(sgpln, vdif_buf, &num_blocks_received, num_blocks_to_request);
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		snprintf(_dbgmsg,_DBGMSGLEN,"Requested %d blocks and received %d\n",num_blocks_to_request,num_blocks_received);
+		DEBUGMSG(_dbgmsg);
+		DEBUGMSG_LEAVEFUNC;
+	#endif
+}
+
+/*
+ * Like read_next_block_vdif_frames reads a specific number of blocks.
+ * After calling, blk_count contains the actual number of consecutive blocks
+ * found and returned, and is always assured equal to requested_blks, unless
+ * end of file is reached.
+ * */
+int read_next_block_vdif_frames_limit(SGPlan *sgpln, uint32_t **vdif_buf, int *blk_count, int requested_blks) {
+	#ifdef DEBUG_LEVEL
+		char _dbgmsg[_DBGMSGLEN];
+	#endif
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		DEBUGMSG_ENTERFUNC;
+	#endif
+	uint32_t *tmp_buf = NULL;
+	int n_frames_total = 0;
+	int n_frames = 0;
+	int blks_read = 0;
+	
+	uint32_t *combine_buf = NULL;
+	int combine_buf_size = WBLOCK_SIZE*(sgpln->n_sgprt+2);
+	int combine_buf_offset = 0;
+	int frame_size = sgpln->sgprt[0].sgi->pkt_size;
+	
+	// allocate combine buffer -- make darn sure it's large enough
+	
+	combine_buf = (uint32_t *)malloc(combine_buf_size);
+	
+	// try first read
+	n_frames = read_next_block_vdif_frames_count_blocks(sgpln, &tmp_buf, &blks_read, requested_blks);
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		snprintf(_dbgmsg,_DBGMSGLEN,"received %d/%d blocks and %d frames\n",blks_read,requested_blks,n_frames);
+		DEBUGMSG(_dbgmsg);
+	#endif
+	*blk_count = blks_read;
+	n_frames_total = n_frames;
+	// if zero returned, end of all data
+	if (n_frames <= 0) {
+		return n_frames;
+	}
+	// copy data to combined buffer, update offset, free temporary buffer
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg,_DBGMSGLEN,"copy to combined buffer\n");
+		//~ DEBUGMSG(_dbgmsg);
+	//~ #endif
+	memcpy((void *)combine_buf, (void *)tmp_buf, n_frames*frame_size);
+	combine_buf_offset += n_frames*frame_size;
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg,_DBGMSGLEN,"update combine buffer offset to %d\n",combine_buf_offset);
+		//~ DEBUGMSG(_dbgmsg);
+	//~ #endif
+	free(tmp_buf);
+	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		//~ snprintf(_dbgmsg,_DBGMSGLEN,"temporary buffer freed\n");
+		//~ DEBUGMSG(_dbgmsg);
+	//~ #endif
+	while (*blk_count < requested_blks) {
+		n_frames = read_next_block_vdif_frames_count_blocks(sgpln, &tmp_buf, &blks_read, requested_blks-*blk_count);
+		#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+			snprintf(_dbgmsg,_DBGMSGLEN,"received %d/%d blocks and %d frames\n",blks_read,requested_blks,n_frames);
+			DEBUGMSG(_dbgmsg);
+		#endif
+		if (n_frames < 0) {
+			// error
+			return n_frames;
+		} else if (n_frames == 0) {
+			// nothing more to do, just break loop
+			break;
+		}
+		// else update and copy
+		n_frames_total += n_frames;
+		*blk_count += blks_read;
+		// copy data to combined buffer, update offset, free temporary buffer
+		memcpy((void *)combine_buf + combine_buf_offset, (void *)tmp_buf, n_frames*frame_size);
+		combine_buf_offset += n_frames*frame_size;
+		free(tmp_buf);
+	}
+	
+	// finaly copy to supplied buffer pointer
+	*vdif_buf = (uint32_t *)malloc(n_frames_total*frame_size);
+	memcpy(*vdif_buf,combine_buf,n_frames_total*frame_size);
+	// and free combine buffer
+	free(combine_buf);
+	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
+		snprintf(_dbgmsg,_DBGMSGLEN,"reporting %d/%d blocks and %d frames\n",blks_read,requested_blks,n_frames);
+		DEBUGMSG(_dbgmsg);
+		DEBUGMSG_LEAVEFUNC;
+	#endif
+	return n_frames_total;
+}
+
 /*
  * Read the next block of VDIF frames.
  * Arguments:
@@ -279,7 +386,7 @@ int make_sg_read_plan(SGPlan **sgpln, const char *pattern,
  *   Block counter for each SGPart is updated if frames where read from
  *     that file.
  */
-int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
+int read_next_block_vdif_frames_count_blocks(SGPlan *sgpln, uint32_t **vdif_buf, int *blk_count, int blk_limit)
 {
 	#ifdef DEBUG_LEVEL
 		char _dbgmsg[_DBGMSGLEN];
@@ -300,6 +407,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 	int isgprt;
 	int n_contiguous_blocks = 0;
 	int mapping[sgpln->n_sgprt];
+	*blk_count = 0;
 	
 	/* Check if read mode */
 	if (sgpln->sgm != SCATGAT_MODE_READ)
@@ -389,6 +497,10 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf)
 				(void *)(sgpln->sgprt[mapping[isgprt]-1].data_buf),sgpln->sgprt[mapping[isgprt]-1].n_frames*frame_size);
 		frames_read += sgpln->sgprt[mapping[isgprt]-1].n_frames;
 		clear_sg_part_buffer(&(sgpln->sgprt[mapping[isgprt]-1]));
+		(*blk_count)++;
+		if (*blk_count >= blk_limit) {
+			break;
+		}
 	}
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		snprintf(_dbgmsg,_DBGMSGLEN,"Found %d contiguous blocks\n",n_contiguous_blocks);
@@ -1687,22 +1799,26 @@ int first_write_sg_plan(SGPlan *sgpln)
 #ifdef DEBUG_LEVEL
 void debug_msg(const char *msg, const char *filename, const char *funcname, int linenum)
 {
-	printf("DEBUG:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fprintf(stdout,"DEBUG:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fflush(stdout);
 }
 
 void error_msg(const char *msg, const char *filename, const char *funcname, int linenum)
 {
-	printf("ERROR:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fprintf(stdout,"ERROR:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fflush(stdout);
 }
 
 void warning_msg(const char *msg, const char *filename, const char *funcname, int linenum)
 {
-	printf("WARNING:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fprintf(stdout,"WARNING:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fflush(stdout);
 }
 
 void info_msg(const char *msg, const char *filename, const char *funcname, int linenum)
 {
-	printf("INFO:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fprintf(stdout,"INFO:%s:%d:%s:%s\n",filename,linenum,funcname,msg);
+	fflush(stdout);
 }
 
 void print_sg_part(SGPart *sgprt, const char *label)
