@@ -261,7 +261,7 @@ int read_next_block_vdif_frames(SGPlan *sgpln, uint32_t **vdif_buf) {
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
 		DEBUGMSG_ENTERFUNC;
 	#endif
-	int num_blocks_to_request = sgpln->n_sgprt/8; //sgpln->n_sgprt;
+	int num_blocks_to_request = sgpln->n_sgprt; //sgpln->n_sgprt;
 	int num_blocks_received = 0;
 	return read_next_block_vdif_frames_limit(sgpln, vdif_buf, &num_blocks_received, num_blocks_to_request);
 	#if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
@@ -1297,12 +1297,30 @@ int compare_sg_part(const void *a, const void *b)
 	//~ #endif
 	SGPart *sgprt_a = (SGPart *)a;
 	SGPart *sgprt_b = (SGPart *)b;
-	/* Seconds since reference epoch. */
-	uint32_t secs_inre_a = FIRST_VDIF_SECS_INRE(sgprt_a);
-	uint32_t secs_inre_b = FIRST_VDIF_SECS_INRE(sgprt_b);
-	/* Data frame number within second */
-	uint32_t df_num_insec_a = FIRST_VDIF_DF_NUM_INSEC(sgprt_a);
-	uint32_t df_num_insec_b = FIRST_VDIF_DF_NUM_INSEC(sgprt_b);
+	/* Seconds since reference epoch and data frame number within second */
+	int ii = 0;
+	uint32_t secs_inre_a = 0; //uint32_t secs_inre_a = FIRST_VDIF_SECS_INRE(sgprt_a); uint32_t df_num_insec_a = FIRST_VDIF_DF_NUM_INSEC(sgprt_a);
+	uint32_t df_num_insec_a = 0;
+	for (ii = 0; ii < sgprt_a->n_frames; ii++) {
+		void *ref = (void *)sgprt_a->data_buf + ii*(sgprt_a->sgi->pkt_size);
+		VDIFHeader *v = (VDIFHeader *)ref;
+		if (!v->w1.invalid) {
+			secs_inre_a = v->w1.secs_inre;
+			df_num_insec_a = v->w2.df_num_insec;
+			break;
+		}
+	}
+	uint32_t secs_inre_b = 0; //uint32_t secs_inre_b = FIRST_VDIF_SECS_INRE(sgprt_b); uint32_t df_num_insec_b = FIRST_VDIF_DF_NUM_INSEC(sgprt_b);
+	uint32_t df_num_insec_b = 0;
+	for (ii = 0; ii < sgprt_b->n_frames; ii++) {
+		void *ref = (void *)sgprt_b->data_buf + ii*(sgprt_b->sgi->pkt_size);
+		VDIFHeader *v = (VDIFHeader *)ref;
+		if (!v->w1.invalid) {
+			secs_inre_b = v->w1.secs_inre;
+			df_num_insec_b = v->w2.df_num_insec;
+			break;
+		}
+	}
 	
 	int result = secs_inre_a < secs_inre_b ? -1 : secs_inre_a > secs_inre_b;
 	//~ #if defined(DEBUG_LEVEL) && DEBUG_LEVEL >= DEBUG_LEVEL_DEBUG
